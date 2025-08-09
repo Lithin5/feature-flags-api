@@ -77,7 +77,6 @@ export class AuthController {
   }
 
   private getCookieOptions(): any {
-    
     const options: any = {
       httpOnly: true,
       secure: this.configService.get('cookie.secure'),
@@ -96,28 +95,102 @@ export class AuthController {
         console.log('Extracted domain:', extractedDomain);
         
         if (extractedDomain && extractedDomain.includes('.')) {
-          // Ensure domain is properly formatted for cookies
-          let formattedDomain = extractedDomain;
-          // If domain doesn't start with . and isn't a root domain, add .
-          if (!formattedDomain.startsWith('.') && !formattedDomain.startsWith('www.')) {
-            formattedDomain = `.${formattedDomain}`;
+          // Check if this is a public suffix domain (like vercel.app, netlify.app, etc.)
+          if (this.isPublicSuffixDomain(extractedDomain)) {
+            console.log('Detected public suffix domain:', extractedDomain);
+            console.log('Skipping domain attribute - public suffix domains are not allowed for cookies');
+            console.log('Cookie will be scoped to exact hostname');
+          } else if (this.validateDomain(extractedDomain)) {
+            // Ensure domain is properly formatted for cookies
+            let formattedDomain = extractedDomain;
+            
+            // Only add leading dot if it doesn't already have one and isn't a www domain
+            if (!formattedDomain.startsWith('.') && !formattedDomain.startsWith('www.')) {
+              // Check if this is a valid domain that should have a leading dot
+              // Don't add leading dot for IP addresses or localhost-like domains
+              if (!formattedDomain.match(/^\d+\.\d+\.\d+\.\d+$/) && formattedDomain !== 'localhost') {
+                formattedDomain = `.${formattedDomain}`;
+              }
+            }
+            
+            console.log('Formatted domain for cookie:', formattedDomain);
+            
+            // Additional safety check - only set domain if it's a valid domain
+            if (this.isValidCookieDomain(formattedDomain)) {
+              options.domain = formattedDomain;
+            } else {
+              console.warn('Domain failed final validation:', formattedDomain);
+              console.warn('Skipping domain attribute - using default cookie behavior');
+            }
+          } else {
+            console.warn('Domain validation failed for:', extractedDomain);
+            console.warn('Skipping domain attribute - using default cookie behavior');
           }
-          
-          console.log('Formatted domain for cookie:', formattedDomain);
-          options.domain = formattedDomain;
         } else {
           console.warn('Invalid domain format:', cookieDomain);
           console.warn('Domain must contain at least one dot (.)');
+          console.warn('Skipping domain attribute - using default cookie behavior');
         }
       } catch (error) {
         console.warn('Error processing COOKIE_DOMAIN:', error);
+        console.warn('Skipping domain attribute - using default cookie behavior');
       }
     } else {
-      console.log('COOKIE_DOMAIN not set or not in production mode');
+      if (process.env.NODE_ENV === 'production') {
+        console.log('COOKIE_DOMAIN not set in production - using default cookie behavior');
+      } else {
+        console.log('Not in production mode - using default cookie behavior');
+      }
     }
 
     console.log('Final cookie options:', options);
     return options;
+  }
+
+  private isValidCookieDomain(domain: string): boolean {
+    // Additional validation for cookie domains
+    if (!domain || typeof domain !== 'string') return false;
+    
+    // Must be a valid domain format
+    const domainRegex = /^\.?[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+    if (!domainRegex.test(domain)) return false;
+    
+    // Don't allow consecutive dots, dots at the end, or single dots
+    if (domain.includes('..') || domain.endsWith('.') || domain === '.') return false;
+    
+    // Must contain at least one dot (for subdomains or main domains)
+    if (!domain.includes('.')) return false;
+    
+    return true;
+  }
+
+  private isPublicSuffixDomain(domain: string): boolean {
+    // Common public suffix domains that browsers block for cookies
+    const publicSuffixes = [
+      'vercel.app',
+      'netlify.app',
+      'herokuapp.com',
+      'railway.app',
+      'render.com',
+      'fly.dev',
+      'appspot.com',
+      'firebaseapp.com',
+      'github.io',
+      'gitlab.io',
+      'surge.sh',
+      'now.sh',
+      'co',
+      'app',
+      'dev',
+    ];
+
+    const lowerDomain = domain.toLowerCase();
+    
+    // Check if the domain ends with any public suffix
+    return publicSuffixes.some(suffix => {
+      // Check for exact match or subdomain
+      return lowerDomain === suffix || lowerDomain.endsWith(`.${suffix}`);
+    });
   }
 
   @UseGuards(JwtAuthGuard)

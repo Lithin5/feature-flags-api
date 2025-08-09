@@ -81,6 +81,56 @@ For production deployments, you need to set the `COOKIE_DOMAIN` environment vari
   - ❌ `COOKIE_DOMAIN=https://your-frontend-domain.com`
   - ❌ `COOKIE_DOMAIN=your-backend-domain.com`
 
+**Troubleshooting Cookie Domain Issues:**
+
+If you encounter the error "This attempt to set cookie via a set-cookie header was blocked because its domain attribute was invalid with regards to the current host url", try these solutions:
+
+1. **Check your COOKIE_DOMAIN setting:**
+   ```bash
+   # Correct format
+   COOKIE_DOMAIN=your-frontend-domain.com
+   
+   # If you have subdomains, you might need:
+   COOKIE_DOMAIN=.your-frontend-domain.com
+   ```
+
+2. **Verify domain matches exactly:**
+   - If your frontend is at `https://app.example.com`, set `COOKIE_DOMAIN=app.example.com`
+   - If your frontend is at `https://example.com`, set `COOKIE_DOMAIN=example.com`
+
+3. **For subdomain scenarios:**
+   - If your frontend is at `https://app.example.com` and you want cookies to work across all subdomains, set `COOKIE_DOMAIN=.example.com`
+   - If you only want cookies for the exact subdomain, set `COOKIE_DOMAIN=app.example.com`
+
+4. **Vercel and Public Suffix Domains:**
+   If you're deploying on Vercel, Netlify, or similar platforms, **do not set** the `COOKIE_DOMAIN` environment variable. These platforms use public suffix domains (like `vercel.app`, `netlify.app`) which browsers block for security reasons.
+   
+   - ✅ **Correct for Vercel**: Don't set `COOKIE_DOMAIN` at all
+   - ❌ **Incorrect for Vercel**: `COOKIE_DOMAIN=.feature-flags-ui-sigma.vercel.app`
+   
+   The application will automatically detect public suffix domains and skip setting the domain attribute.
+
+5. **Temporary workaround:**
+   If you're still having issues, you can temporarily remove the `COOKIE_DOMAIN` environment variable to use default cookie behavior (cookies will only work for the exact domain that sets them).
+
+6. **Check browser console:**
+   Look for console logs that show the processed domain and any validation warnings.
+
+**Example Production Configuration:**
+```bash
+# For a frontend at https://myapp.com
+COOKIE_DOMAIN=myapp.com
+
+# For a frontend at https://app.mycompany.com with subdomain support
+COOKIE_DOMAIN=.mycompany.com
+
+# For Vercel/Netlify deployments (don't set COOKIE_DOMAIN)
+# COOKIE_DOMAIN not set
+
+# For local development (no domain needed)
+# COOKIE_DOMAIN not set
+```
+
 ### Production Deployment Checklist
 
 1. **Set NODE_ENV**: Ensure `NODE_ENV=production` is set in your environment
