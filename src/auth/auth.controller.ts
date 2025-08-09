@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { Role } from './roles.enum';
 import { LoginDto } from './dto/login.dto';
@@ -16,7 +17,11 @@ interface AuthenticatedRequest extends Request {
 
 @Controller('auth')
 export class AuthController {
-  constructor(private authService: AuthService, private jwtService: JwtService) {}
+  constructor(
+    private authService: AuthService, 
+    private jwtService: JwtService,
+    private configService: ConfigService
+  ) {}
 
   private extractDomain(urlOrDomain: string): string {
     if (!urlOrDomain || !urlOrDomain.trim()) return '';
@@ -36,21 +41,38 @@ export class AuthController {
     if (!domain || !domain.trim()) return false;
     
     const extractedDomain = this.extractDomain(domain);
+    console.log('Validating domain:', extractedDomain);
     
     // Don't allow localhost or IP addresses
-    if (extractedDomain === 'localhost') return false;
-    if (/^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(extractedDomain)) return false;
+    if (extractedDomain === 'localhost') {
+      console.log('Rejected: localhost');
+      return false;
+    }
+    if (/^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(extractedDomain)) {
+      console.log('Rejected: IP address');
+      return false;
+    }
     
     // Must contain a dot
-    if (!extractedDomain.includes('.')) return false;
+    if (!extractedDomain.includes('.')) {
+      console.log('Rejected: no dot found');
+      return false;
+    }
     
     // Check for valid domain format - must be alphanumeric with hyphens and dots
     const domainRegex = /^\.?[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-    if (!domainRegex.test(extractedDomain)) return false;
+    if (!domainRegex.test(extractedDomain)) {
+      console.log('Rejected: invalid domain format');
+      return false;
+    }
     
     // Don't allow domains with consecutive dots or ending with dot
-    if (extractedDomain.includes('..') || extractedDomain.endsWith('.')) return false;
+    if (extractedDomain.includes('..') || extractedDomain.endsWith('.')) {
+      console.log('Rejected: consecutive dots or ends with dot');
+      return false;
+    }
     
+    console.log('Domain validation passed:', extractedDomain);
     return true;
   }
 
@@ -58,40 +80,43 @@ export class AuthController {
     
     const options: any = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      secure: this.configService.get('cookie.secure'),
+      sameSite: this.configService.get('cookie.sameSite'),
       path: '/',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     };
 
-    // Add domain in production if specified and valid
-    if (process.env.NODE_ENV === 'production' && process.env.COOKIE_DOMAIN) {
-      const domain = process.env.COOKIE_DOMAIN.trim();
-      if (domain && this.validateDomain(domain)) {
-        try {
-          // Extract clean domain from URL or domain string
-          const extractedDomain = this.extractDomain(domain);
-          
+    // Add domain in production if specified
+    const cookieDomain = this.configService.get('cookie.domain');
+    if (process.env.NODE_ENV === 'production' && cookieDomain) {
+      try {
+        // Extract clean domain from URL or domain string
+        const extractedDomain = this.extractDomain(cookieDomain);
+        console.log('Processing COOKIE_DOMAIN:', cookieDomain);
+        console.log('Extracted domain:', extractedDomain);
+        
+        if (extractedDomain && extractedDomain.includes('.')) {
           // Ensure domain is properly formatted for cookies
           let formattedDomain = extractedDomain;
           // If domain doesn't start with . and isn't a root domain, add .
           if (!formattedDomain.startsWith('.') && !formattedDomain.startsWith('www.')) {
             formattedDomain = `.${formattedDomain}`;
           }
+          
+          console.log('Formatted domain for cookie:', formattedDomain);
           options.domain = formattedDomain;
-        } catch (error) {
-          console.warn('Error formatting COOKIE_DOMAIN:', error);
-          console.warn('COOKIE_DOMAIN will not be set');
+        } else {
+          console.warn('Invalid domain format:', cookieDomain);
+          console.warn('Domain must contain at least one dot (.)');
         }
-      } else {
-        console.warn('Invalid COOKIE_DOMAIN format:', domain);
-        console.warn('Valid examples: example.com, .example.com, app.example.com');
-        console.warn('For localhost development, do not set COOKIE_DOMAIN');
-        console.warn('Note: Remove https:// and any paths from the domain');
-        console.warn('Current value will be treated as:', this.extractDomain(domain));
+      } catch (error) {
+        console.warn('Error processing COOKIE_DOMAIN:', error);
       }
+    } else {
+      console.log('COOKIE_DOMAIN not set or not in production mode');
     }
 
+    console.log('Final cookie options:', options);
     return options;
   }
 

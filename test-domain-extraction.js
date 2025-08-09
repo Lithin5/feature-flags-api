@@ -46,7 +46,9 @@ const testCases = [
   '127.0.0.1',
   'example.com',
   '.example.com',
-  'app.example.com'
+  'app.example.com',
+  'https://feature-flags-api-t1b2.onrender.com/',
+  'feature-flags-api-t1b2.onrender.com'
 ];
 
 console.log('Testing domain extraction and validation:');
@@ -59,6 +61,10 @@ testCases.forEach(testCase => {
   console.log(`Input: "${testCase}"`);
   console.log(`Extracted: "${extracted}"`);
   console.log(`Valid: ${isValid ? '✅' : '❌'}`);
+  if (isValid) {
+    const formattedDomain = extracted.startsWith('.') ? extracted : `.${extracted}`;
+    console.log(`Formatted for cookie: "${formattedDomain}"`);
+  }
   console.log('');
 });
 

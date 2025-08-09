@@ -21,6 +21,10 @@
   <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
   [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
 
+# Feature Flags API
+
+A NestJS-based API for managing feature flags with authentication and role-based access control.
+
 ## Description
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
@@ -40,17 +44,50 @@ Create a `.env` file in the root directory with the following variables:
 PORT=5001
 
 # CORS Configuration
-# Comma-separated list of allowed origins
-CORS_ORIGINS=http://localhost:5000,http://localhost:3000,https://yourdomain.com
+# Comma-separated list of allowed origins (frontend domains)
+CORS_ORIGINS=http://localhost:5000,http://localhost:3000,https://your-frontend-domain.com
+
+# Cookie Configuration (for production)
+# Set this to your frontend domain (not backend domain)
+COOKIE_DOMAIN=your-frontend-domain.com
+
+# JWT Configuration
+JWT_SECRET=your-jwt-secret
+JWT_REFRESH_SECRET=your-jwt-refresh-secret
+JWT_EXPIRES_IN=1h
+
+# Database Configuration
+DATABASE_URL=your-database-url
 ```
 
 ### CORS Origins
 
 The `CORS_ORIGINS` environment variable accepts a comma-separated list of allowed origins. For example:
 - Single origin: `CORS_ORIGINS=http://localhost:5000`
-- Multiple origins: `CORS_ORIGINS=http://localhost:5000,http://localhost:3000,https://yourdomain.com`
+- Multiple origins: `CORS_ORIGINS=http://localhost:5000,http://localhost:3000,https://your-frontend-domain.com`
 
 If not specified, it defaults to `http://localhost:5000`.
+
+### Cookie Domain Configuration
+
+For production deployments, you need to set the `COOKIE_DOMAIN` environment variable to your frontend domain. This is crucial for authentication to work properly.
+
+**Important Notes:**
+- Set `COOKIE_DOMAIN` to your **frontend domain**, not your backend domain
+- Remove any protocol (http:// or https://) and paths from the domain
+- Examples:
+  - ✅ `COOKIE_DOMAIN=your-frontend-domain.com`
+  - ✅ `COOKIE_DOMAIN=.your-frontend-domain.com`
+  - ❌ `COOKIE_DOMAIN=https://your-frontend-domain.com`
+  - ❌ `COOKIE_DOMAIN=your-backend-domain.com`
+
+### Production Deployment Checklist
+
+1. **Set NODE_ENV**: Ensure `NODE_ENV=production` is set in your environment
+2. **Configure CORS**: Set `CORS_ORIGINS` to include your frontend domain(s)
+3. **Configure Cookie Domain**: Set `COOKIE_DOMAIN` to your frontend domain
+4. **Secure Headers**: Ensure your production environment supports secure cookies
+5. **Database**: Configure your production database connection
 
 ## Compile and run the project
 

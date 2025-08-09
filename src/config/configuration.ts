@@ -8,4 +8,9 @@ export default () => ({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   },
+  cookie: {
+    domain: process.env.COOKIE_DOMAIN || null,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+  },
 });
