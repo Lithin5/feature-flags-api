@@ -103,12 +103,13 @@ If you encounter the error "This attempt to set cookie via a set-cookie header w
    - If you only want cookies for the exact subdomain, set `COOKIE_DOMAIN=app.example.com`
 
 4. **Vercel and Public Suffix Domains:**
-   If you're deploying on Vercel, Netlify, or similar platforms, **do not set** the `COOKIE_DOMAIN` environment variable. These platforms use public suffix domains (like `vercel.app`, `netlify.app`) which browsers block for security reasons.
+   If you're deploying on Vercel, Netlify, or similar platforms, you **need to set** the `COOKIE_DOMAIN` environment variable to your frontend domain for cross-domain cookie sharing to work.
    
-   - ✅ **Correct for Vercel**: Don't set `COOKIE_DOMAIN` at all
-   - ❌ **Incorrect for Vercel**: `COOKIE_DOMAIN=.feature-flags-ui-sigma.vercel.app`
+   - ✅ **Correct for Vercel**: `COOKIE_DOMAIN=feature-flags-ui-sigma.vercel.app`
+   - ✅ **Correct for Vercel with subdomain support**: `COOKIE_DOMAIN=.vercel.app` (if you want cookies to work across all Vercel subdomains)
+   - ❌ **Incorrect for Vercel**: `COOKIE_DOMAIN=.feature-flags-ui-sigma.vercel.app` (leading dot not needed)
    
-   The application will automatically detect public suffix domains and skip setting the domain attribute.
+   The application will detect public suffix domains but still set the domain attribute to enable cross-domain cookie sharing.
 
 5. **Temporary workaround:**
    If you're still having issues, you can temporarily remove the `COOKIE_DOMAIN` environment variable to use default cookie behavior (cookies will only work for the exact domain that sets them).
@@ -124,8 +125,8 @@ COOKIE_DOMAIN=myapp.com
 # For a frontend at https://app.mycompany.com with subdomain support
 COOKIE_DOMAIN=.mycompany.com
 
-# For Vercel/Netlify deployments (don't set COOKIE_DOMAIN)
-# COOKIE_DOMAIN not set
+# For Vercel deployments (set to your frontend domain)
+COOKIE_DOMAIN=feature-flags-ui-sigma.vercel.app
 
 # For local development (no domain needed)
 # COOKIE_DOMAIN not set

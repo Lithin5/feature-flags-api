@@ -98,8 +98,11 @@ export class AuthController {
           // Check if this is a public suffix domain (like vercel.app, netlify.app, etc.)
           if (this.isPublicSuffixDomain(extractedDomain)) {
             console.log('Detected public suffix domain:', extractedDomain);
-            console.log('Skipping domain attribute - public suffix domains are not allowed for cookies');
-            console.log('Cookie will be scoped to exact hostname');
+            console.log('For Vercel/Netlify domains, we need to set the domain to the frontend domain');
+            // For public suffix domains like Vercel, we need to set the domain to allow cross-domain cookies
+            // The domain should be the frontend domain (not the backend domain)
+            options.domain = extractedDomain;
+            console.log('Set cookie domain to:', extractedDomain);
           } else if (this.validateDomain(extractedDomain)) {
             // Ensure domain is properly formatted for cookies
             let formattedDomain = extractedDomain;
@@ -138,6 +141,11 @@ export class AuthController {
     } else {
       if (process.env.NODE_ENV === 'production') {
         console.log('COOKIE_DOMAIN not set in production - using default cookie behavior');
+        // In production without domain, ensure we have the right sameSite setting
+        // for cross-origin requests
+        if (!options.domain) {
+          options.sameSite = 'none';
+        }
       } else {
         console.log('Not in production mode - using default cookie behavior');
       }
