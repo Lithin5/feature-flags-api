@@ -18,24 +18,38 @@ interface AuthenticatedRequest extends Request {
 export class AuthController {
   constructor(private authService: AuthService, private jwtService: JwtService) {}
 
+  private extractDomain(urlOrDomain: string): string {
+    if (!urlOrDomain || !urlOrDomain.trim()) return '';
+    
+    let domain = urlOrDomain.trim();
+    
+    // Remove protocol (http:// or https://) if present
+    domain = domain.replace(/^https?:\/\//, '');
+    
+    // Remove path and query parameters if present
+    domain = domain.split('/')[0];
+    
+    return domain;
+  }
+
   private validateDomain(domain: string): boolean {
     if (!domain || !domain.trim()) return false;
     
-    const trimmedDomain = domain.trim();
+    const extractedDomain = this.extractDomain(domain);
     
     // Don't allow localhost or IP addresses
-    if (trimmedDomain === 'localhost') return false;
-    if (/^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(trimmedDomain)) return false;
+    if (extractedDomain === 'localhost') return false;
+    if (/^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(extractedDomain)) return false;
     
     // Must contain a dot
-    if (!trimmedDomain.includes('.')) return false;
+    if (!extractedDomain.includes('.')) return false;
     
     // Check for valid domain format - must be alphanumeric with hyphens and dots
     const domainRegex = /^\.?[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-    if (!domainRegex.test(trimmedDomain)) return false;
+    if (!domainRegex.test(extractedDomain)) return false;
     
     // Don't allow domains with consecutive dots or ending with dot
-    if (trimmedDomain.includes('..') || trimmedDomain.endsWith('.')) return false;
+    if (extractedDomain.includes('..') || extractedDomain.endsWith('.')) return false;
     
     return true;
   }
@@ -55,8 +69,11 @@ export class AuthController {
       const domain = process.env.COOKIE_DOMAIN.trim();
       if (domain && this.validateDomain(domain)) {
         try {
+          // Extract clean domain from URL or domain string
+          const extractedDomain = this.extractDomain(domain);
+          
           // Ensure domain is properly formatted for cookies
-          let formattedDomain = domain;
+          let formattedDomain = extractedDomain;
           // If domain doesn't start with . and isn't a root domain, add .
           if (!formattedDomain.startsWith('.') && !formattedDomain.startsWith('www.')) {
             formattedDomain = `.${formattedDomain}`;
@@ -70,6 +87,8 @@ export class AuthController {
         console.warn('Invalid COOKIE_DOMAIN format:', domain);
         console.warn('Valid examples: example.com, .example.com, app.example.com');
         console.warn('For localhost development, do not set COOKIE_DOMAIN');
+        console.warn('Note: Remove https:// and any paths from the domain');
+        console.warn('Current value will be treated as:', this.extractDomain(domain));
       }
     }
 
