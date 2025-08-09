@@ -1,0 +1,148 @@
+import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { AuthService } from './auth.service';
+import { Role } from './roles.enum';
+import { LoginDto } from './dto/login.dto';
+import { RefreshTokenGuard } from './refresh-token.guard';
+import { JwtAuthGuard } from './jwt-auth.guard';
+import { Request, Response } from 'express';
+import { JwtService } from '@nestjs/jwt';
+
+interface AuthenticatedRequest extends Request {
+  user: {
+    userId: string;
+    role: Role;
+  };
+}
+
+@Controller('auth')
+export class AuthController {
+  constructor(private authService: AuthService, private jwtService: JwtService) {}
+
+  private validateDomain(domain: string): boolean {
+    if (!domain || !domain.trim()) return false;
+    
+    const trimmedDomain = domain.trim();
+    
+    // Don't allow localhost or IP addresses
+    if (trimmedDomain === 'localhost') return false;
+    if (/^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(trimmedDomain)) return false;
+    
+    // Must contain a dot
+    if (!trimmedDomain.includes('.')) return false;
+    
+    // Check for valid domain format - must be alphanumeric with hyphens and dots
+    const domainRegex = /^\.?[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+    if (!domainRegex.test(trimmedDomain)) return false;
+    
+    // Don't allow domains with consecutive dots or ending with dot
+    if (trimmedDomain.includes('..') || trimmedDomain.endsWith('.')) return false;
+    
+    return true;
+  }
+
+  private getCookieOptions(): any {
+    
+    const options: any = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    };
+
+    // Add domain in production if specified and valid
+    if (process.env.NODE_ENV === 'production' && process.env.COOKIE_DOMAIN) {
+      const domain = process.env.COOKIE_DOMAIN.trim();
+      if (domain && this.validateDomain(domain)) {
+        try {
+          // Ensure domain is properly formatted for cookies
+          let formattedDomain = domain;
+          // If domain doesn't start with . and isn't a root domain, add .
+          if (!formattedDomain.startsWith('.') && !formattedDomain.startsWith('www.')) {
+            formattedDomain = `.${formattedDomain}`;
+          }
+          options.domain = formattedDomain;
+        } catch (error) {
+          console.warn('Error formatting COOKIE_DOMAIN:', error);
+          console.warn('COOKIE_DOMAIN will not be set');
+        }
+      } else {
+        console.warn('Invalid COOKIE_DOMAIN format:', domain);
+        console.warn('Valid examples: example.com, .example.com, app.example.com');
+        console.warn('For localhost development, do not set COOKIE_DOMAIN');
+      }
+    }
+
+    return options;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  getProfile(@Req() req: AuthenticatedRequest) {
+    return this.authService.getProfile(req.user.userId);
+  }
+
+
+  @Post('login')
+  async login(@Body() loginDto: LoginDto, @Res() res: Response) {
+    const user = await this.authService.validateUser(
+      loginDto.email,
+      loginDto.password,
+    );
+
+    const tokens = await this.authService.login(user);
+
+    res.cookie('refresh_token', tokens.refresh_token, this.getCookieOptions());
+
+    // Return user data along with access token
+    const { password, hashedRt, ...userData } = user;
+    return res.json({ 
+      access_token: tokens.access_token,
+      user: userData
+    });
+  }
+
+  @UseGuards(RefreshTokenGuard)
+  @Post('refresh')
+  refreshTokens(@Req() req, @Res() res: Response) {
+    const userId = req.user['sub'];
+    const refreshToken = req.user['refreshToken'];
+    return this.authService
+      .refreshTokens(userId, refreshToken)
+      .then((tokens) => {
+        res.cookie('refresh_token', tokens.refresh_token, this.getCookieOptions());
+        return res.json({ access_token: tokens.access_token });
+      });
+  }
+
+  @Post('logout')
+  async logout(@Req() req: Request, @Res() res: Response) {
+    try {
+      const refreshToken = req.cookies?.refresh_token;
+
+      if (!refreshToken) {
+        return res.status(200).json({ message: 'Already logged out' });
+      }
+
+      // Decode refresh token to get user ID
+      const payload = this.jwtService.verify(refreshToken, {
+        secret: process.env.JWT_REFRESH_SECRET,
+      });
+
+      const userId = payload.sub;
+
+      // Clear refresh token in DB
+      await this.authService.logout(userId);
+
+      // Clear refresh token cookie with same options as setting
+      const clearCookieOptions = { ...this.getCookieOptions() };
+      delete clearCookieOptions.maxAge; // Remove maxAge for clearing
+      res.clearCookie('refresh_token', clearCookieOptions);
+
+      return res.status(200).json({ message: 'Logged out successfully' });
+    } catch (err) {
+      console.error('Logout error:', err);
+      return res.status(200).json({ message: 'Already logged out' });
+    }
+  }
+}

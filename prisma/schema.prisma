@@ -1,0 +1,246 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+//
+// Enums
+//
+enum UserRole {
+  admin
+  approve
+  request
+  view
+}
+
+enum AuditAction {
+  created
+  updated
+  deleted
+}
+
+enum RequestStatus {
+  approved
+  pending
+  rejected
+  cancelled
+}
+
+//
+// Models
+//
+
+model User {
+  id        String    @id @default(cuid())
+  firstName String
+  lastName  String
+  email     String    @unique
+  password  String
+  role      UserRole  @default(view)
+  isActive  Boolean   @default(true) // Active/Deactivated status
+  deletedAt DateTime? // Soft delete timestamp
+  createdAt DateTime  @default(now())
+  hashedRt  String?
+
+  // Relations
+  auditsChanged    FeatureFlagAudit[]         @relation("ChangedByUser")
+  requestsMade     FeatureFlagChangeRequest[] @relation("RequestedByUser")
+  requestsApproved FeatureFlagChangeRequest[] @relation("ApprovedByUser")
+  FeatureFlagDraft FeatureFlagDraft[]
+}
+
+model Environment {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  key         String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  isActive    Boolean   @default(true) // for deactivation
+  deletedAt   DateTime? // soft delete
+
+  // Relations
+  featureFlags FeatureFlag[]
+  drafts      FeatureFlagDraft[]
+}
+
+model Platform {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  key         String    @unique
+  description String?
+  isActive    Boolean   @default(true) // for deactivation
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime? // soft delete
+
+  // Relations
+  featureFlags FeatureFlag[]
+  drafts      FeatureFlagDraft[]
+}
+
+model FeatureFlag {
+  id          String   @id @default(cuid())
+  key         String
+  name        String
+  description String
+  enabled     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  scopeId   String
+  scope     FeatureFlagScope @relation(fields: [scopeId], references: [id])
+  scopeSlug String // Denormalized for faster retrieval
+
+  // Relations
+  platformId String
+  platform   Platform @relation(fields: [platformId], references: [id])
+
+  environmentId String
+  environment   Environment @relation(fields: [environmentId], references: [id])
+
+  // Store keys for faster lookups (denormalized)
+  platformKey    String
+  environmentKey String
+
+  audits         FeatureFlagAudit[]
+  changeRequests FeatureFlagChangeRequest[]
+
+  @@index([environmentId, platformId])
+  @@unique([key, platformKey, environmentKey, scopeSlug])
+}
+
+model FeatureFlagAudit {
+  id     String      @id @default(cuid())
+  flagId String
+  flag   FeatureFlag @relation(fields: [flagId], references: [id])
+
+  action   AuditAction
+  oldValue String?
+  newValue String?
+
+  changedBy     String
+  changedByUser User   @relation("ChangedByUser", fields: [changedBy], references: [id])
+
+  changedAt DateTime @default(now())
+}
+
+model FeatureFlagChangeRequest {
+  id     String       @id @default(cuid())
+  flagId String?
+  flag   FeatureFlag? @relation(fields: [flagId], references: [id])
+
+  draftId String?
+  draft   FeatureFlagDraft? @relation(fields: [draftId], references: [id])
+
+  requestedBy     String
+  requestedByUser User   @relation("RequestedByUser", fields: [requestedBy], references: [id])
+
+  requestReason String?
+
+  requestedType String
+  proposedValue Boolean
+  currentValue  Boolean
+  status        RequestStatus @default(pending)
+
+  approvedBy     String?
+  approvedByUser User?   @relation("ApprovedByUser", fields: [approvedBy], references: [id])
+
+  approvedAt DateTime?
+  comment     String?
+  createdAt  DateTime  @default(now())
+
+  // Flag details for audit trail (stored when change request is created)
+  flagName        String?
+  flagKey         String?
+  flagDescription String?
+  environmentName String?
+  environmentKey  String?
+  platformName    String?
+  platformKey     String?
+  scopeName       String?
+  scopeSlug       String?
+
+  @@index([flagId, status])
+}
+
+model FeatureFlagScope {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  slug        String  @unique // Lowercase, for fast lookup
+  description String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+  isActive  Boolean   @default(true) // Active/Deactivated status
+
+  // Relations
+  featureFlags FeatureFlag[]
+  drafts      FeatureFlagDraft[]
+}
+
+model FeatureFlagDraft {
+  id             String  @id @default(cuid())
+  key            String
+  name           String
+  description    String
+  enabled        Boolean @default(false)
+  environmentId  String
+  platformId     String
+  scopeId        String
+  platformKey    String
+  environmentKey String
+  scopeSlug      String
+
+  requestedBy     String
+  requestedByUser User   @relation(fields: [requestedBy], references: [id])
+
+  environment Environment @relation(fields: [environmentId], references: [id])
+  platform    Platform    @relation(fields: [platformId], references: [id])
+  scope       FeatureFlagScope @relation(fields: [scopeId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  changeRequests FeatureFlagChangeRequest[]
+}
+
+//
+// Analytics Models
+//
+
+model FeatureFlagUsage {
+  id            String   @id @default(cuid())
+  flagKey       String?  // Optional since we're tracking at scope level
+  platformKey   String
+  environmentKey String
+  scopeSlug     String
+  enabled       Boolean
+  requestedAt   DateTime @default(now())
+  userAgent     String?
+  ipAddress     String?
+  clientId      String?  // Optional client identifier
+
+  @@index([scopeSlug, requestedAt])
+  @@index([platformKey, environmentKey, scopeSlug])
+}
+
+model ScopeAnalytics {
+  id            String   @id @default(cuid())
+  scopeSlug     String   @unique
+  scopeName     String
+  totalRequests Int      @default(0)
+  lastUpdated   DateTime @default(now())
+  
+  @@index([totalRequests])
+}
